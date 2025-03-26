@@ -21,9 +21,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Инициализация моделей
 ner_model = pipeline(
     "ner",
-    model="Davlan/bert-base-multilingual-cased-ner-hrl",
+    model="./custom_ner_model",  # Путь к обученной модели
     aggregation_strategy="simple"
 )
+
 
 comparison_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
 gen_model_name = "UrukHan/t5-russian-summarization"

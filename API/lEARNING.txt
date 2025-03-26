@@ -1,0 +1,127 @@
+training_data = [
+    {
+        "text": "Собираю ПК с процессором AMD Ryzen 9 7950X и материнкой ASUS ROG Crosshair X670E",
+        "entities": [
+            {"start": 15, "end": 33, "label": "CPU"},
+            {"start": 38, "end": 65, "label": "motherboard"}
+        ]
+    },
+    {
+        "text": "Нужна видеокарта NVIDIA RTX 4080 и блок питания Corsair RM1000x",
+        "entities": [
+            {"start": 6, "end": 22, "label": "GPU"},
+            {"start": 37, "end": 54, "label": "PSU"}
+        ]
+    },
+    {
+        "text": "Выбираю между SSD Samsung 990 Pro 2TB и HDD Seagate IronWolf 8TB",
+        "entities": [
+            {"start": 12, "end": 32, "label": "SSD"},
+            {"start": 37, "end": 57, "label": "HDD"}
+        ]
+    },
+    {
+        "text": "Корпус MSI MPG Sekira 500X с подсветкой и 4 кулерами",
+        "entities": [
+            {"start": 0, "end": 20, "label": "case"}
+        ]
+    },
+    {
+        "text": "ОЗУ Kingston Fury Beast DDR5 64GB работает на 6000 МГц",
+        "entities": [
+            {"start": 0, "end": 30, "label": "RAM"}
+        ]
+    },
+    {
+        "text": "Докупил систему охлаждения DeepCool LT720 для Core i9",
+        "entities": [
+            {"start": 7, "end": 27, "label": "cooling"}
+        ]
+    },
+    {
+        "text": "Материнская плата Gigabyte Z790 AORUS Elite с Wi-Fi 6",
+        "entities": [
+            {"start": 0, "end": 32, "label": "motherboard"}
+        ]
+    },
+    {
+        "text": "Рекомендую GPU PowerColor Radeon RX 7900 XTX для 4K",
+        "entities": [
+            {"start": 10, "end": 38, "label": "GPU"}
+        ]
+    },
+    {
+        "text": "Ищу бюджетную CPU Intel Core i5-13400F для офиса",
+        "entities": [
+            {"start": 12, "end": 32, "label": "CPU"}
+        ]
+    },
+    {
+        "text": "Western Digital выпустили новый HDD Red Pro 22TB",
+        "entities": [
+            {"start": 0, "end": 17, "label": "manufacturer"},
+            {"start": 27, "end": 43, "label": "HDD"}
+        ]
+    },
+    {
+        "text": "ASUS и MSI лидируют в производстве материнских плат",
+        "entities": [
+            {"start": 0, "end": 4, "label": "manufacturer"},
+            {"start": 7, "end": 10, "label": "manufacturer"}
+        ]
+    },
+    {
+        "text": "Кулер Noctua NH-D15 совместим с сокетом AM5",
+        "entities": [
+            {"start": 0, "end": 16, "label": "cooling"}
+        ]
+    },
+    {
+        "text": "SSD Kingston KC3000 1TB показывает 7000 МБ/с",
+        "entities": [
+            {"start": 0, "end": 22, "label": "SSD"}
+        ]
+    },
+    {
+        "text": "Блок питания Thermaltake Toughpower GF3 850W",
+        "entities": [
+            {"start": 0, "end": 35, "label": "PSU"}
+        ]
+    },
+    {
+        "text": "Видеокарты Zotac Gaming Trinity обычно дешевле аналогов",
+        "entities": [
+            {"start": 0, "end": 23, "label": "GPU"}
+        ]
+    },
+    {
+        "text": "Процессор AMD Ryzen 7 7800X3D оптимален для игр",
+        "entities": [
+            {"start": 0, "end": 25, "label": "CPU"}
+        ]
+    },
+    {
+        "text": "Материнка ASRock B650M PG Riptide с DDR5",
+        "entities": [
+            {"start": 0, "end": 26, "label": "motherboard"}
+        ]
+    },
+    {
+        "text": "Корпус NZXT H9 Flow с прозрачной стенкой",
+        "entities": [
+            {"start": 0, "end": 15, "label": "case"}
+        ]
+    },
+    {
+        "text": "Память G.Skill Trident Z5 RGB 32GB DDR5",
+        "entities": [
+            {"start": 0, "end": 30, "label": "RAM"}
+        ]
+    },
+    {
+        "text": "Система охлаждения Arctic Liquid Freezer II 360",
+        "entities": [
+            {"start": 0, "end": 38, "label": "cooling"}
+        ]
+    }
+]

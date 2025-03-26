@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Анализ ТЗ</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+        .section {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 12px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #495057;
+        }
+        .match-good { color: #28a745; font-weight: bold; }
+        .match-medium { color: #ffc107; font-weight: bold; }
+        .match-bad { color: #dc3545; font-weight: bold; }
+        pre {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .back-button {
+            display: block;
+            width: 200px;
+            margin: 30px auto;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .extracted-section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="section">
+            <h2>Сопоставление с базой данных</h2>
+            {% if matched %}
+                <table>
+                    <tr>
+                        <th>Запрошено</th>
+                        <th>Характеристики</th>
+                        <th>Доступная модель</th>
+                        <th>Совпадение</th>
+                    </tr>
+                    {% for match in matched %}
+                    <tr>
+                        <td>{{ match.required.name }}</td>
+                        <td>{{ match.required.characteristics }}</td>
+                        <td>{{ match.available[0] }} ({{ match.available[1] }} шт.)</td>
+                        <td class="
+                            {% if match.match_score >= 80 %}match-good
+                            {% elif match.match_score >= 50 %}match-medium
+                            {% else %}match-bad
+                            {% endif %}">
+                            {{ match.match_score }}%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>Совпадений не найдено</p>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h2>Извлеченные компоненты</h2>
+            {% if extracted %}
+                {% for component in extracted %}
+                <div class="extracted-section">
+                    <strong>{{ component.name }}</strong>
+                    <p>{{ component.characteristics }}</p>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>Компоненты не найдены</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="section" style="width: 80%; margin: 0 auto;">
+        <h2>Исходный текст технического задания</h2>
+        <pre>{{ text }}</pre>
+    </div>
+
+    <a href="{{ url_for('index') }}" class="back-button">Назад к загрузке</a>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import ast
 import os
-from transformers import AutoTokenizer, AutoModelForTokenClassification, Trainer, TrainingArguments
+import numpy as np
+from transformers import AutoTokenizer, AutoModelForTokenClassification, Trainer, TrainingArguments, AutoConfig, DataCollatorForTokenClassification
 from datasets import Dataset, Features, Sequence, ClassLabel, Value
 
 
@@ -24,9 +25,9 @@ def load_training_data_from_file(filename='lEARNING.txt'):
 
 
 def train_ner_model(
-        filename='lEARNING.txt',
-        model_name="Davlan/bert-base-multilingual-cased-ner-hrl",
-        output_dir="./custom_ner_model"
+    filename='lEARNING.txt',
+    model_name="Davlan/bert-base-multilingual-cased-ner-hrl",
+    output_dir="./custom_ner_model"
 ):
     # Загрузка данных из файла
     training_data = load_training_data_from_file(filename)
@@ -51,13 +52,17 @@ def train_ner_model(
         id2label = {idx: label for label, idx in label2id.items()}
         return label2id, id2label
 
+    # Загрузка токенизатора и подготовка label mapping
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    label2id, id2label = prepare_labels(training_data)
+
     # Токенизация и аннотирование данных
-    def tokenize_and_align_labels(example, tokenizer, label2id):
+    def tokenize_and_align_labels(example):
         text = example['text']
         entities = example['entities']
 
         # Токенизация текста
-        tokenized = tokenizer(text, truncation=True, is_split_into_words=False)
+        tokenized = tokenizer(text, truncation=True, is_split_into_words=False, padding=False)
 
         # Инициализация меток
         labels = ['O'] * len(tokenized.input_ids)
@@ -74,38 +79,43 @@ def train_ner_model(
                     labels[i + 1:i + len(entity_tokens)] = [f'I-{label}'] * (len(entity_tokens) - 1)
                     break
 
+        # Преобразование меток в числовые идентификаторы
+        labels = [label2id.get(label, label2id['O']) for label in labels]
+
         tokenized['labels'] = labels
         return tokenized
-
-    # Загрузка токенизатора и модели
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    # Подготовка label mapping
-    label2id, id2label = prepare_labels(training_data)
-
-    # Загрузка модели с новым количеством меток
-    config = AutoModelForTokenClassification.from_pretrained(
-        model_name,
-        num_labels=len(label2id),
-    ).config
-
-    config.id2label = id2label
-    config.label2id = label2id
-
-    model = AutoModelForTokenClassification.from_pretrained(
-        model_name,
-        config=config
-    )
 
     # Создание Dataset
     dataset = Dataset.from_list(training_data)
     dataset = dataset.map(
-        lambda x: tokenize_and_align_labels(x, tokenizer, label2id),
+        tokenize_and_align_labels,
         remove_columns=dataset.column_names
     )
 
     # Разделение на train и validation
     dataset = dataset.train_test_split(test_size=0.2)
+
+    # Создание специализированного Data Collator для NER
+    data_collator = DataCollatorForTokenClassification(
+        tokenizer=tokenizer,
+        padding=True,
+        max_length=None,
+        pad_to_multiple_of=None
+    )
+
+    # Модифицируем часть с загрузкой модели
+    config = AutoConfig.from_pretrained(
+        model_name,
+        num_labels=len(label2id),
+        id2label=id2label,
+        label2id=label2id
+    )
+
+    model = AutoModelForTokenClassification.from_pretrained(
+        model_name,
+        config=config,
+        ignore_mismatched_sizes=True
+    )
 
     # Аргументы тренировки
     training_args = TrainingArguments(
@@ -117,15 +127,17 @@ def train_ner_model(
         weight_decay=0.01,
         logging_dir='./logs',
         logging_steps=10,
-        evaluation_strategy="epoch"
+        eval_strategy="epoch",
+        save_strategy="epoch"
     )
 
-    # Инициализация Trainer
+    # Инициализация Trainer с DataCollator
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset['train'],
-        eval_dataset=dataset['test']
+        eval_dataset=dataset['test'],
+        data_collator=data_collator
     )
 
     # Обучение модели

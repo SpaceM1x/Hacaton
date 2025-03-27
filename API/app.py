@@ -21,9 +21,10 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Инициализация моделей
 ner_model = pipeline(
     "ner",
-    model="./custom_ner_model",  # Путь к обученной модели
+    model="DeepPavlov/rubert-base-cased",
     aggregation_strategy="simple"
 )
+
 
 comparison_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
 gen_model_name = "UrukHan/t5-russian-summarization"
@@ -58,23 +59,7 @@ def get_components_from_db():
 
 # Улучшенная функция извлечения компонентов
 def extract_components(text):
-    # Расширенные списки ключевых слов и производителей
-    component_keywords = {
-        'motherboard': ['материнская плата', 'мат. плата', 'mainboard', 'motherboard', 'плата'],
-        'cpu': ['процессор', 'цпу', 'cpu', 'central processing unit', 'процессор'],
-        'ram': ['оперативная память', 'ram', 'озу', 'память', 'dimm', 'ddr', 'memory'],
-        'gpu': ['видеокарта', 'gpu', 'graphics card', 'графический процессор', 'видеокарта'],
-        'ssd': ['ssd', 'жесткий диск', 'hdd', 'накопитель', 'storage', 'nvme', 'pcie', 'жд']
-    }
-
-    manufacturers = [
-        'intel', 'amd', 'nvidia', 'asus', 'msi', 'gigabyte', 'samsung',
-        'corsair', 'crucial', 'western digital', 'seagate', 'asrock',
-        'palit', 'sapphire', 'zotac', 'powercolor', 'evga',
-        'g.skill', 'kingston', 'team', 'hp', 'dell', 'rox', 'atx'
-    ]
-
-    # Улучшенные регулярные выражения для извлечения полных компонентов
+    # Улучшенные паттерны для извлечения оперативной памяти
     component_patterns = {
         'motherboard': [
             r'(?i)(материнская\s*плата|motherboard)(?:\s*модель)?[:]\s*([^\n]+)',
@@ -85,35 +70,38 @@ def extract_components(text):
             r'(?i)(intel|amd)\s*(core\s*i\d+[^\n]+|ryzen[^\n]+)',
         ],
         'ram': [
+            # Новые, более специфичные паттерны для RAM
             r'(?i)(оперативная\s*память|ram|озу)(?:\s*модель)?[:]\s*([^\n]+)',
-            r'(?i)(corsair|g\.skill|kingston|crucial)\s*([^\n]+\s*(?:\d+\s*(?:гб|gb)|ddr\d+)[^\n]*)',
+            r'(?i)(corsair|g\.skill|kingston|crucial)\s*([^\n]+(?:\d+\s*(?:гб|gb)|ddr\d+)[^\n]*)',
+            # Добавляем извлечение с детальными характеристиками
+            r'(?i)(ddr\d+)\s*([^\n]+(?:\d+\s*(?:гб|gb)|pro|vengeance)[^\n]*)',
+            r'(?i)(vengeance\s*rgb\s*pro)\s*(\d+\s*(?:гб|gb))[^\n]*',
         ],
         'gpu': [
             r'(?i)(видеокарта|gpu|graphics\s*card)(?:\s*модель)?[:]\s*([^\n]+)',
-            r'(?i)(nvidia|amd)\s*(geforce|rtx|radeon[^\n]+)',
+            r'(?i)(nvidia|amd|geforce|rtx|radeon)\s*([^\n]+(?:rtx\s*\d+|geforce|radeon)[^\n]*)',
         ],
         'ssd': [
-            r'(?i)(ssd|накопитель|жесткий\s*диск)(?:\s*модель)?[:]\s*([^\n]+)',
-            r'(?i)(samsung|crucial|western\s*digital|seagate)\s*([^\n]+\s*(?:\d+\s*(?:тб|гб|tb|gb)|nvme)[^\n]*)',
+            r'(?i)(ssd|накопитель|жесткий\s*диск|storage)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(samsung|crucial|western\s*digital|seagate|wd|sx\d+)\s*([^\n]+\s*(?:\d+\s*(?:тб|гб|tb|gb)|nvme|pro|evo)[^\n]*)',
         ]
     }
-
 
     # Функция для поиска компонентов по типу
     def find_components(text, patterns, component_type):
         components = []
-        # Первый проход - поиск полных совпадений
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
             for match in matches:
-                # Если match - кортеж, берем второй элемент (имя компонента)
+                # Ensure we get the component name
                 component = match[1] if isinstance(match, tuple) else match
                 if component and len(component.strip()) > 3:
-                    # Очистка и обработка имени компонента
+                    # Clean and process component name
                     cleaned_component = re.sub(r'\s+', ' ', component.strip())
 
-                    # Проверка на дубликаты
+                    # Avoid duplicates
                     if not any(existing['name'] == cleaned_component for existing in components):
+                        # Enhanced component extraction with more context
                         components.append({
                             'type': component_type,
                             'name': cleaned_component,
@@ -121,6 +109,7 @@ def extract_components(text):
                         })
 
         return components
+
 
     # Извлечение компонентов по каждому типу
     extracted_components = []
@@ -157,33 +146,70 @@ def match_components(extracted, db_components):
         best_score = 0
 
         for db_item in db_components:
-            # Более сложное сопоставление с несколькими критериями
-            model_similarity = calculate_match_score(item['name'], db_item[1])
+            # More sophisticated matching with multiple criteria
+            # Специальная логика для RAM с учетом объема и типа памяти
+            if item['type'] == 'ram':
+                # Более точное извлечение объема и типа памяти
+                volume_match = re.search(r'(\d+)\s*(?:гб|gb)', item['name'], re.IGNORECASE)
+                ddr_match = re.search(r'(ddr\d+)', item['name'], re.IGNORECASE)
+                volume_match_db = re.search(r'Объем:\s*(\d+)', db_item[2], re.IGNORECASE)
+                ddr_match_db = re.search(r'Тип:\s*(ddr\d+)', db_item[2], re.IGNORECASE)
 
-            # Дополнительные критерии сопоставления
-            extra_criteria_score = 0
-            if item.get('characteristics'):
-                extra_criteria_score = calculate_match_score(
-                    item['characteristics'],
-                    db_item[2]
+                volume = int(volume_match.group(1)) if volume_match else 0
+                volume_db = int(volume_match_db.group(1)) if volume_match_db else 0
+
+                ddr_type = ddr_match.group(1).lower() if ddr_match else ''
+                ddr_type_db = ddr_match_db.group(1).lower() if ddr_match_db else ''
+
+                # Проверка соответствия объема и типа памяти с более строгими условиями
+                volume_score = 50 if volume > 0 and volume == volume_db else 0
+                ddr_score = 30 if ddr_type and ddr_type == ddr_type_db else 0
+
+                # Базовое сходство названий
+                name_similarity = calculate_match_score(item['name'], db_item[1])
+                manufacturer_match = any(
+                    manuf.lower() in item['name'].lower()
+                    for manuf in ['corsair', 'g.skill', 'crucial', 'kingston', 'team']
                 )
 
-            # Взвешенная оценка совпадения
-            combined_score = (
-                    model_similarity * 0.6 +
-                    extra_criteria_score * 0.4
-            )
+                # Комбинированный score для RAM с учетом производителя
+                combined_score = (
+                        name_similarity * 0.2 +  # Название
+                        volume_score +  # Объем памяти
+                        ddr_score +  # Тип DDR
+                        (20 if manufacturer_match else 0)  # Бонус за производителя
+                )
+            else:
+                # Для других компонентов - прежняя логика
+                model_similarity = calculate_match_score(item['name'], db_item[1])
+
+                # Additional matching criteria
+                extra_criteria_score = 0
+                if item.get('characteristics'):
+                    extra_criteria_score = calculate_match_score(
+                        item['characteristics'],
+                        db_item[2]
+                    )
+
+                # Weighted match score
+                combined_score = (
+                        model_similarity * 0.7 +
+                        extra_criteria_score * 0.3
+                )
+
+            # Debug print to understand matching process
+            print(f"Matching {item['name']} with {db_item[1]}: Score = {combined_score}")
 
             if combined_score > best_score:
                 best_score = combined_score
                 best_match = {
                     'required': item,
-                    'available': (db_item[1], db_item[3]),
+                    'available': (db_item[1], db_item[3]),  # Model and quantity
                     'match_score': combined_score
                 }
 
-        # Снижаем порог совпадения до 25%
-        if best_score >= 25:
+        # Повышаем порог до 40%, чтобы избежать ложных срабатываний
+        if best_score >= 40:
             matched.append(best_match)
 
     return matched

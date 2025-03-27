@@ -25,21 +25,23 @@ ner_model = pipeline(
     aggregation_strategy="simple"
 )
 
-
 comparison_model = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
 gen_model_name = "UrukHan/t5-russian-summarization"
 gen_tokenizer = AutoTokenizer.from_pretrained(gen_model_name)
 gen_model = AutoModelForSeq2SeqLM.from_pretrained(gen_model_name)
+
 
 # Проверка допустимого расширения файла
 def allowed_file(filename):
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
+
 # Извлечение текста из .docx файла
 def extract_text_from_docx(filepath):
     doc = Document(filepath)
     return '\n'.join([para.text for para in doc.paragraphs if para.text.strip()])
+
 
 # Получение компонентов из базы данных с проверкой существования файла
 def get_components_from_db():
@@ -53,108 +55,150 @@ def get_components_from_db():
     conn.close()
     return components
 
-# Расширенное извлечение компонентов с использованием NER и регулярных выражений
+
+# Улучшенная функция извлечения компонентов
 def extract_components(text):
-    component_keywords = [
-        # Расширенный список компонентов
-        'процессор', 'цпу', 'cpu', 'central processing unit',
-        'материнская плата', 'мат. плата', 'mainboard', 'motherboard',
-        'оперативная память', 'ram', 'озу', 'memory',
-        'ssd', 'жесткий диск', 'hdd', 'накопитель',
-        'видеокарта', 'gpu', 'graphics card', 'графический процессор',
-        'блок питания', 'psu', 'источник питания',
-        'корпус', 'case', 'системный блок',
-        'охлаждение', 'кулер', 'система охлаждения'
-    ]
+    # Расширенные списки ключевых слов и производителей
+    component_keywords = {
+        'motherboard': ['материнская плата', 'мат. плата', 'mainboard', 'motherboard', 'плата'],
+        'cpu': ['процессор', 'цпу', 'cpu', 'central processing unit', 'процессор'],
+        'ram': ['оперативная память', 'ram', 'озу', 'память', 'dimm', 'ddr', 'memory'],
+        'gpu': ['видеокарта', 'gpu', 'graphics card', 'графический процессор', 'видеокарта'],
+        'ssd': ['ssd', 'жесткий диск', 'hdd', 'накопитель', 'storage', 'nvme', 'pcie', 'жд']
+    }
 
     manufacturers = [
-        # Расширенный список производителей
         'intel', 'amd', 'nvidia', 'asus', 'msi', 'gigabyte', 'samsung',
         'corsair', 'crucial', 'western digital', 'seagate', 'asrock',
-        'palit', 'sapphire', 'zotac', 'powercolor', 'evga'
+        'palit', 'sapphire', 'zotac', 'powercolor', 'evga',
+        'g.skill', 'kingston', 'team', 'hp', 'dell', 'rox', 'atx'
     ]
 
-    # Регулярные выражения для поиска компонентов
-    component_patterns = [
-        r'(?i)({keywords})\s+([\w\-\s]+\d+\w*)'.format(keywords='|'.join(component_keywords)),
-        r'(?i)({manufacturers})\s+([\w\-\s]+\d+\w*)'.format(manufacturers='|'.join(manufacturers))
-    ]
+    # Улучшенные регулярные выражения для извлечения полных компонентов
+    component_patterns = {
+        'motherboard': [
+            r'(?i)(материнская\s*плата|motherboard)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(asus|msi|gigabyte|asrock)\s*([^\n]+\s*(?:z\d+|b\d+|x\d+|gaming|pro)[^\n]*)',
+        ],
+        'cpu': [
+            r'(?i)(процессор|cpu)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(intel|amd)\s*(core\s*i\d+[^\n]+|ryzen[^\n]+)',
+        ],
+        'ram': [
+            r'(?i)(оперативная\s*память|ram|озу)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(corsair|g\.skill|kingston|crucial)\s*([^\n]+\s*(?:\d+\s*(?:гб|gb)|ddr\d+)[^\n]*)',
+        ],
+        'gpu': [
+            r'(?i)(видеокарта|gpu|graphics\s*card)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(nvidia|amd)\s*(geforce|rtx|radeon[^\n]+)',
+        ],
+        'ssd': [
+            r'(?i)(ssd|накопитель|жесткий\s*диск)(?:\s*модель)?[:]\s*([^\n]+)',
+            r'(?i)(samsung|crucial|western\s*digital|seagate)\s*([^\n]+\s*(?:\d+\s*(?:тб|гб|tb|gb)|nvme)[^\n]*)',
+        ]
+    }
 
-    # Извлечение компонентов через NER
-    ner_results = ner_model(text)
 
-    # Извлечение компонентов через регулярные выражения
-    regex_components = []
-    for pattern in component_patterns:
-        regex_components.extend(re.findall(pattern, text, re.IGNORECASE))
+    # Функция для поиска компонентов по типу
+    def find_components(text, patterns, component_type):
+        components = []
+        # Первый проход - поиск полных совпадений
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE | re.DOTALL)
+            for match in matches:
+                # Если match - кортеж, берем второй элемент (имя компонента)
+                component = match[1] if isinstance(match, tuple) else match
+                if component and len(component.strip()) > 3:
+                    # Очистка и обработка имени компонента
+                    cleaned_component = re.sub(r'\s+', ' ', component.strip())
 
-    # Объединение результатов
-    components = []
-    seen = set()
+                    # Проверка на дубликаты
+                    if not any(existing['name'] == cleaned_component for existing in components):
+                        components.append({
+                            'type': component_type,
+                            'name': cleaned_component,
+                            'characteristics': extract_characteristics(text, cleaned_component)
+                        })
 
-    # Добавление результатов NER
-    for entity in ner_results:
-        if entity['entity_group'] in ['PRODUCT', 'MODEL']:
-            component = entity['word']
-            if component.lower() not in seen:
-                components.append({
-                    'name': component,
-                    'characteristics': extract_characteristics(text, component)
-                })
-                seen.add(component.lower())
+        return components
 
-    # Добавление результатов regex
-    for match in regex_components:
-        component = match[1] if isinstance(match, tuple) else match
-        if component.lower() not in seen:
-            components.append({
-                'name': component,
-                'characteristics': extract_characteristics(text, component)
-            })
-            seen.add(component.lower())
+    # Извлечение компонентов по каждому типу
+    extracted_components = []
+    for component_type, patterns in component_patterns.items():
+        extracted_components.extend(find_components(text, patterns, component_type))
 
-    return components
+    return extracted_components
 
-# Извлечение характеристик компонента с помощью T5
+
+# Извлечение характеристик с более контекстным подходом
 def extract_characteristics(text, component_name):
     try:
-        prompt = f"""
-        Извлеки технические характеристики для {component_name} из текста:
-        {text[:2000]}
-        Ответ приведи в формате: Характеристика: Значение
-        """
-        inputs = gen_tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True)
-        outputs = gen_model.generate(**inputs, max_length=400)
-        return gen_tokenizer.decode(outputs[0], skip_special_tokens=True)
+        # Контекстный поиск характеристик
+        context_search = re.search(
+            fr"{re.escape(component_name)}.*?(\n.*?)+?(?=\n\d|\n[А-Я]|\Z)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
+
+        if context_search:
+            context = context_search.group(0)
+            return context.strip()
+
+        return "Характеристики не найдены"
     except Exception as e:
-        return f"Не удалось извлечь характеристики: {str(e)}"
+        return f"Ошибка извлечения: {str(e)}"
+
 
 # Сопоставление извлеченных компонентов с базой данных
 def match_components(extracted, db_components):
     matched = []
     for item in extracted:
+        best_match = None
+        best_score = 0
+
         for db_item in db_components:
-            # Расширенное сопоставление с учетом модели, названия и характеристик
-            similarity_score = calculate_match_score(
-                f"{item['name']} {item.get('characteristics', '')}",
-                f"{db_item[0]} {db_item[1]} {db_item[2]}"
+            # Более сложное сопоставление с несколькими критериями
+            model_similarity = calculate_match_score(item['name'], db_item[1])
+
+            # Дополнительные критерии сопоставления
+            extra_criteria_score = 0
+            if item.get('characteristics'):
+                extra_criteria_score = calculate_match_score(
+                    item['characteristics'],
+                    db_item[2]
+                )
+
+            # Взвешенная оценка совпадения
+            combined_score = (
+                    model_similarity * 0.6 +
+                    extra_criteria_score * 0.4
             )
 
-            if similarity_score >= 50:  # Порог совпадения
-                matched.append({
+            if combined_score > best_score:
+                best_score = combined_score
+                best_match = {
                     'required': item,
-                    'available': (db_item[1], db_item[3]),  # Модель и количество
-                    'match_score': similarity_score
-                })
+                    'available': (db_item[1], db_item[3]),
+                    'match_score': combined_score
+                }
+
+        # Снижаем порог совпадения до 25%
+        if best_score >= 25:
+            matched.append(best_match)
 
     return matched
 
-# Вычисление степени совпадения между компонентами
+
+# Вычисление степени совпадения между текстами
 def calculate_match_score(req_text, db_text):
     try:
-        # Нормализация текста
+        # Предобработка текста
         req_text = req_text.lower()
         db_text = db_text.lower()
+
+        # Удаление специальных символов и лишних пробелов
+        req_text = re.sub(r'[^\w\s]', '', req_text)
+        db_text = re.sub(r'[^\w\s]', '', db_text)
 
         # Кодирование текстов
         embeddings = comparison_model.encode([req_text, db_text])
@@ -162,21 +206,31 @@ def calculate_match_score(req_text, db_text):
         # Вычисление косинусного сходства
         similarity = util.cos_sim(embeddings[0], embeddings[1]).item()
 
-        # Преобразование в процентную шкалу
+        # Преобразование в процентную шкалу с более мягкой шкалой
         return round(similarity * 100, 1)
     except Exception as e:
         print(f"Ошибка при вычислении сходства: {e}")
         return 0
+
 
 # Генерация спецификации: объединение извлечения и сопоставления
 def generate_specification(tech_spec_text, db_components):
     # Извлечение компонентов
     extracted_components = extract_components(tech_spec_text)
 
+    print("Извлеченные компоненты:")
+    for component in extracted_components:
+        print(f"- {component['name']}: {component.get('characteristics', 'Без характеристик')}")
+
+    print("\nКомпоненты в базе данных:")
+    for db_component in db_components:
+        print(f"- {db_component[0]} ({db_component[1]})")
+
     # Сопоставление с базой данных
     matched = match_components(extracted_components, db_components)
 
     return extracted_components, matched
+
 
 # Основной маршрут приложения
 @app.route('/', methods=['GET', 'POST'])
@@ -217,6 +271,7 @@ def index():
                 return f'Ошибка: {str(e)}'
 
     return render_template('index.html')
+
 
 # Запуск приложения
 if __name__ == '__main__':
